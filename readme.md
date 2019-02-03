@@ -2,15 +2,20 @@
 
 Cmake script for projects targeting Nordic Semiconductor nRF5x series devices using the GCC toolchain from ARM.
 
+# Hardware
+
+This project may be use for custom nrf51822 boards. For flashing and debugging uses [ST-Link V2](https://www.aliexpress.com/item/ST-LINK-Stlink-ST-Link-V2-Mini-STM8-STM32-Simulator-Download-Programmer-Programming-with-Cover/32921831799.html) in-circuit debugger and programmer with SWD interface.
+
 # Dependencies
 
 The script makes use of the following tools:
 
-- nRF51 Software Development Kit 10.0.0 - SoC specific drivers and libraries
-- nRF5 Command Line Tools - contains util for merging hex files 
-- ST-Link V2 - in-circuit debugger and programmer with SWD interface
-- OpenOCD - open-source software tool for programming custom devices
-- arm-non-eabi-gcc by ARM and the GCC Team - compiler toolchain for embedded (= bare metal) ARM chips
+- [nRF51 Software Development Kit 10.0.0](https://developer.nordicsemi.com/nRF5_SDK/nRF51_SDK_v10.x.x/doc/10.0.0/) - SoC specific drivers and libraries
+- [nRF5 Command Line Tools](https://www.nordicsemi.com/Software-and-Tools/Development-Tools/nRF5-Command-Line-Tools) - contains util for merging hex files 
+- [OpenOCD](http://openocd.org/) - open-source software tool for programming custom devices
+- [arm-non-eabi-gcc by ARM and the GCC Team](https://developer.arm.com/open-source/gnu-toolchain/gnu-rm/downloads) - compiler toolchain for embedded (= bare metal) ARM chips
+- [Clion](https://www.jetbrains.com/clion/) - cmake based IDE for cross-platform applications
+- [using OpenOCD with CLion](https://habr.com/ru/post/345670/) - OpenOCD plugin for flushing & debugging ARM apps from CLion
 
 # Setup
 
@@ -160,9 +165,10 @@ You can debug your applications using `ARM MCU development plugin` for CLion. Se
 
 # Links
 
-- about memory organization of bluetooth apps: https://www.diytronic.ru/2018/01/08/nrf51822-trying-to-make-bluetooth-working/
-- using OpenOCD for flash nrf51 firmware: https://acassis.wordpress.com/2016/02/25/using-openocd-to-program-a-homebrew-nrf51822-board/
-- using OpenOCD with CLion: https://habr.com/ru/post/345670/
+- [nRF51_SDK_v10.x.x download](https://developer.nordicsemi.com/nRF5_SDK/nRF51_SDK_v10.x.x/nRF51_SDK_10.0.0_dc26b5e.zip)
+- [about memory organization of bluetooth apps](https://www.diytronic.ru/2018/01/08/nrf51822-trying-to-make-bluetooth-working/)
+- [OpenOCD 0.10.0 for Windows download](http://sysprogs.com/files/gnutoolchains/arm-eabi/openocd/OpenOCD-20181130.7z)
+- [using OpenOCD for flash nrf51 firmware](https://acassis.wordpress.com/2016/02/25/using-openocd-to-program-a-homebrew-nrf51822-board/)
 
 # License
 
