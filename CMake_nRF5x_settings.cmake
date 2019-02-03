@@ -1,0 +1,8 @@
+set(DEBUG_ENABLE true)
+set(CMAKE_VERBOSE_MAKEFILE ON)
+set(NRF_TARGET "nrf51")
+set(SOFTDEVICE "s130")
+set(ARM_NONE_EABI_TOOLCHAIN_PATH "C:/Program Files (x86)/GNU Tools Arm Embedded/7 2018-q2-update")
+set(NRF5_SDK_PATH "C:/Users/Stephan/nRF51_SDK")
+set(MERGEHEX_PATH "C:/Program Files (x86)/Nordic Semiconductor/nrf5x/bin/mergehex.exe")
+set(OPENOCD_PATH "C:/Users/Stephan/OpenOCD/bin/openocd.exe")
