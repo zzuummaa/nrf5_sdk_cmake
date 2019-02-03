@@ -33,9 +33,10 @@ The script makes use of the following tools:
 	```
 	_Note_: you can add `CXX` between `C ASM` to add c++ support
 	
-6. Set your target chip family: `nRF51`
+6. Set your target chip family and softdevice: `nRF51`, `s130`
 
 	```cmake
+	set(SOFTDEVICE "s130")
 	set(NRF_TARGET "nrf51") 
 	```
 
@@ -132,6 +133,36 @@ cmake --build "cmake-build" --target FLASH_<your project name>
 ```commandline
 cmake --build "cmake-build" --target FLASH_<your project name>_<softdevice_id>
 ```
+
+# Debug with CLion
+
+You can debug your applications using `ARM MCU development plugin` for CLion. Setup instruction:
+
+1. In Clion open: `File->Settings->plugins->marketplace`. Type `openocd` and click install on `OpenOCD + STM32CubeMX support`
+
+2. Create OpenOCD configuration file `nrf51822.cfg`:
+
+    ```commandline
+    #nRF51822 Target
+    source [find interface/stlink.cfg]
+    
+    transport select hla_swd
+    
+    set WORKAREASIZE 0x4000
+    source [find target/nrf51.cfg] 
+    ```
+
+3. In CLion add `OpenOCD Download & Run` configuration:
+
+    ![Screenshot](debug_configuration.jpg)
+
+4. Click Debug button (don't use Run button on this target)
+
+# Links
+
+- about memory organization of bluetooth apps: https://www.diytronic.ru/2018/01/08/nrf51822-trying-to-make-bluetooth-working/
+- using OpenOCD for flash nrf51 firmware: https://acassis.wordpress.com/2016/02/25/using-openocd-to-program-a-homebrew-nrf51822-board/
+- using OpenOCD with CLion: https://habr.com/ru/post/345670/
 
 # License
 
