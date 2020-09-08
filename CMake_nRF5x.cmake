@@ -33,10 +33,14 @@ endif ()
 
 if (SOFTDEVICE MATCHES "s110")
     set(WRITE_IMAGE_OFFSET "0x18000")
+    set(LINKER_SCRIPT gcc_nrf51_s110.ld)
 elseif (SOFTDEVICE MATCHES "s130")
     set(WRITE_IMAGE_OFFSET "0x1c000")
-elseif (NOT NRF_TARGET)
-    message(FATAL_ERROR "software device must be defined (SOFTDEVICE variable)")
+    set(LINKER_SCRIPT gcc_nrf51_s130.ld)
+elseif (NOT DEFINED SOFTDEVICE)
+#    message(FATAL_ERROR "software device must be defined (SOFTDEVICE variable)")
+    set(WRITE_IMAGE_OFFSET "0x00000")
+    set(LINKER_SCRIPT gcc_nrf51.ld)
 else ()
     message(FATAL_ERROR "Only s110 and s130 software devices supported")
 endif()
@@ -67,10 +71,10 @@ macro(nRF5x_setup)
     if (NRF_TARGET MATCHES "nrf51")
         # nRF51 (nRF51-DK => PCA10028)
 
-        set(NRF5_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/gcc_nrf51.ld")
+        set(NRF5_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/${LINKER_SCRIPT}")
         set(CPU_FLAGS "-mcpu=cortex-m0 -mfloat-abi=soft")
-        add_definitions(-DBOARD_PCA10028 -DNRF51 -DNRF51422 -DS130)
-        add_definitions(-DSWI_DISABLE0 -DNRF_SD_BLE_API_VERSION=2 -DBLE_STACK_SUPPORT_REQD)
+        add_definitions(-DBOARD_PCA10028 -DNRF51 -DNRF51422 -DSWI_DISABLE0 -DNRF_SD_BLE_API_VERSION=2 -DBLE_STACK_SUPPORT_REQD -DSOFTDEVICE_PRESENT -D__HEAP_SIZE=1024)
+        add_definitions()
         include_directories(
                 "${NRF5_SDK_PATH}/components/softdevice/s130/headers"
         )
@@ -78,7 +82,13 @@ macro(nRF5x_setup)
                 "${NRF5_SDK_PATH}/components/toolchain/system_nrf51.c"
                 "${NRF5_SDK_PATH}/components/toolchain/gcc/gcc_startup_nrf51.S"
                 )
-        set(SOFTDEVICE_PATH "${NRF5_SDK_PATH}/components/softdevice/s130/hex/s130_nrf51_1.0.0_softdevice.hex")
+        if(SOFTDEVICE MATCHES "s130")
+            add_definitions(-DS130)
+            set(SOFTDEVICE_PATH "${NRF5_SDK_PATH}/components/softdevice/s130/hex/s130_nrf51_1.0.0_softdevice.hex")
+        elseif(SOFTDEVICE MATCHES "s110")
+            add_definitions(-DS110)
+            set(SOFTDEVICE_PATH "${NRF5_SDK_PATH}/components/softdevice/s110/hex/s110_nrf51_8.0.0_softdevice.hex")
+        endif()
         set(SOFTDEVICE_POSTFIX "${SOFTDEVICE}")
     elseif (NRF_TARGET MATCHES "nrf52")
         # nRF52 (nRF52-DK => PCA10040)
@@ -176,23 +186,25 @@ macro(nRF5x_setup)
 #            "${NRF5_SDK_PATH}/components/drivers_ext/segger_rtt/SEGGER_RTT_printf.c"
 #            )
 
-    # Common Bluetooth Low Energy files
-    include_directories(
+    if (DEFINED SOFTDEVICE)
+        # Common Bluetooth Low Energy files
+        include_directories(
             "${NRF5_SDK_PATH}/components/ble"
             "${NRF5_SDK_PATH}/components/ble/common"
-    )
+        )
 
-    list(APPEND SDK_SOURCE_FILES
+        list(APPEND SDK_SOURCE_FILES
             "${NRF5_SDK_PATH}/components/ble/common/ble_advdata.c"
             "${NRF5_SDK_PATH}/components/ble/common/ble_conn_params.c"
             "${NRF5_SDK_PATH}/components/ble/common/ble_conn_state.c"
             "${NRF5_SDK_PATH}/components/ble/common/ble_srv_common.c"
-            )
+        )
 
-    # adds target for erasing and flashing the board with a softdevice
-    add_custom_target(FLASH_SOFTDEVICE ALL
-            COMMAND ${OPENOCD_PATH} -f interface/stlink.cfg -f target/nrf51.cfg -c init -c \"reset halt\" -c \"nrf51 mass_erase 0\" -c \"flash write_image ${SOFTDEVICE_PATH}\" -c reset -c exit
-            )
+        # adds target for erasing and flashing the board with a softdevice
+        add_custom_target(FLASH_SOFTDEVICE ALL
+                COMMAND ${OPENOCD_PATH} -f interface/stlink.cfg -f target/nrf51.cfg -c init -c \"reset halt\" -c \"nrf51 mass_erase 0\" -c \"flash write_image ${SOFTDEVICE_PATH}\" -c reset -c exit
+                )
+    endif()
 
 endmacro(nRF5x_setup)
 
@@ -201,34 +213,34 @@ macro(nRF5x_addExecutable EXECUTABLE_NAME SOURCE_FILES)
     # executable
     add_executable(${EXECUTABLE_NAME} ${SDK_SOURCE_FILES} ${SOURCE_FILES})
     set_target_properties(${EXECUTABLE_NAME} PROPERTIES SUFFIX ".out")
-    set_target_properties(${EXECUTABLE_NAME} PROPERTIES LINK_FLAGS "-Wl,-Map=${EXECUTABLE_NAME}.map -T\"${NRF5_LINKER_SCRIPT}\"")
+    set_target_properties(${EXECUTABLE_NAME} PROPERTIES LINK_FLAGS "-Wl,--print-memory-usage,-Map=${EXECUTABLE_NAME}.map -T\"${NRF5_LINKER_SCRIPT}\"")
 
     # additional POST BUILD setps to create the .bin and .hex files
-    add_custom_command(TARGET ${EXECUTABLE_NAME}
-            POST_BUILD
-            COMMAND ${ARM_NONE_EABI_TOOLCHAIN_PATH}/bin/arm-none-eabi-size ${EXECUTABLE_NAME}.out
+    add_custom_command(TARGET ${EXECUTABLE_NAME} POST_BUILD
             COMMAND ${ARM_NONE_EABI_TOOLCHAIN_PATH}/bin/arm-none-eabi-objcopy -O binary ${EXECUTABLE_NAME}.out "${EXECUTABLE_NAME}.bin"
             COMMAND ${ARM_NONE_EABI_TOOLCHAIN_PATH}/bin/arm-none-eabi-objcopy -O ihex ${EXECUTABLE_NAME}.out "${EXECUTABLE_NAME}.hex"
             COMMENT "post build steps for ${EXECUTABLE_NAME}")
 
     # custom target for flashing the board
     add_custom_target(FLASH_${EXECUTABLE_NAME} ALL
-            COMMAND ${OPENOCD_PATH} -f interface/stlink.cfg -f target/nrf51.cfg -c init -c \"reset halt\" -c \"flash write_image ${EXECUTABLE_NAME}.hex ${WRITE_IMAGE_OFFSET}\" -c reset -c exit
+            COMMAND ${OPENOCD_PATH} -f interface/stlink.cfg -f target/nrf51.cfg -c init -c \"reset halt\" -c \"flash write_image erase ${EXECUTABLE_NAME}.hex ${WRITE_IMAGE_OFFSET}\" -c reset -c exit
             DEPENDS ${EXECUTABLE_NAME}
             COMMENT "flashing ${EXECUTABLE_NAME}.hex"
             )
 
-    add_custom_target("${EXECUTABLE_NAME}_${SOFTDEVICE_POSTFIX}" ALL
-            COMMAND "${MERGEHEX_PATH}" -m "${SOFTDEVICE_PATH}" "${EXECUTABLE_NAME}.hex" -o "${EXECUTABLE_NAME}_${SOFTDEVICE_POSTFIX}.hex"
-            DEPENDS ${EXECUTABLE_NAME}
-            COMMENT "merging ${EXECUTABLE_NAME}.hex and softdevice"
-            )
+    if (DEFINED SOFTDEVICE)
+        add_custom_target("${EXECUTABLE_NAME}_${SOFTDEVICE_POSTFIX}" ALL
+                COMMAND "${MERGEHEX_PATH}" -m "${SOFTDEVICE_PATH}" "${EXECUTABLE_NAME}.hex" -o "${EXECUTABLE_NAME}_${SOFTDEVICE_POSTFIX}.hex"
+                DEPENDS ${EXECUTABLE_NAME}
+                COMMENT "merging ${EXECUTABLE_NAME}.hex and softdevice"
+                )
 
-    add_custom_target(FLASH_${EXECUTABLE_NAME}_${SOFTDEVICE_POSTFIX} ALL
-            COMMAND ${OPENOCD_PATH} -f interface/stlink.cfg -f target/nrf51.cfg -c init -c \"reset halt\" -c "nrf51 mass_erase 0" -c \"flash write_image ${EXECUTABLE_NAME}_${SOFTDEVICE_POSTFIX}.hex\" -c reset -c exit
-            DEPENDS "${EXECUTABLE_NAME}_${SOFTDEVICE_POSTFIX}"
-            COMMENT "flashing ${EXECUTABLE_NAME}_${SOFTDEVICE_POSTFIX}"
-            )
+        add_custom_target(FLASH_${EXECUTABLE_NAME}_${SOFTDEVICE_POSTFIX} ALL
+                COMMAND ${OPENOCD_PATH} -f interface/stlink.cfg -f target/nrf51.cfg -c init -c \"reset halt\" -c "nrf51 mass_erase 0" -c \"flash write_image ${EXECUTABLE_NAME}_${SOFTDEVICE_POSTFIX}.hex\" -c reset -c exit
+                DEPENDS "${EXECUTABLE_NAME}_${SOFTDEVICE_POSTFIX}"
+                COMMENT "flashing ${EXECUTABLE_NAME}_${SOFTDEVICE_POSTFIX}"
+                )
+    endif()
 endmacro()
 
 # adds app-level scheduler library
@@ -378,3 +390,27 @@ macro(nRF5x_addAppFDS)
             )
 
 endmacro(nRF5x_addAppFDS)
+
+macro(nRF5x_addAppFreeRTOS)
+    add_definitions(-DFREERTOS)
+
+    include_directories(
+            "${NRF5_SDK_PATH}/external/freertos/portable/GCC/nrf51"
+            "${NRF5_SDK_PATH}/external/freertos/portable/CMSIS/nrf51"
+            "${NRF5_SDK_PATH}/external/freertos/source/include"
+    )
+
+    list(APPEND SDK_SOURCE_FILES
+           "${NRF5_SDK_PATH}/external/freertos/source/croutine.c"
+           "${NRF5_SDK_PATH}/external/freertos/source/event_groups.c"
+           "${NRF5_SDK_PATH}/external/freertos/source/portable/MemMang/heap_1.c"
+           "${NRF5_SDK_PATH}/external/freertos/source/list.c"
+           "${NRF5_SDK_PATH}/external/freertos/portable/GCC/nrf51/port.c"
+           "${NRF5_SDK_PATH}/external/freertos/portable/CMSIS/nrf51/port_cmsis.c"
+           "${NRF5_SDK_PATH}/external/freertos/portable/CMSIS/nrf51/port_cmsis_systick.c"
+           "${NRF5_SDK_PATH}/external/freertos/source/queue.c"
+           "${NRF5_SDK_PATH}/external/freertos/source/tasks.c"
+           "${NRF5_SDK_PATH}/external/freertos/source/timers.c"
+            )
+
+endmacro(nRF5x_addAppFreeRTOS)
