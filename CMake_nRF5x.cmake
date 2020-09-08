@@ -73,8 +73,7 @@ macro(nRF5x_setup)
 
         set(NRF5_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/${LINKER_SCRIPT}")
         set(CPU_FLAGS "-mcpu=cortex-m0 -mfloat-abi=soft")
-        add_definitions(-DBOARD_PCA10028 -DNRF51 -DNRF51422 -DSWI_DISABLE0 -DNRF_SD_BLE_API_VERSION=2 -DBLE_STACK_SUPPORT_REQD -DSOFTDEVICE_PRESENT -D__HEAP_SIZE=1024)
-        add_definitions()
+        add_definitions(-DBOARD_PCA10028 -DNRF51 -DNRF51422 -DSWI_DISABLE0 -DNRF_SD_BLE_API_VERSION=2 -DBLE_STACK_SUPPORT_REQD -D__HEAP_SIZE=1024)
         include_directories(
                 "${NRF5_SDK_PATH}/components/softdevice/s130/headers"
         )
@@ -83,10 +82,10 @@ macro(nRF5x_setup)
                 "${NRF5_SDK_PATH}/components/toolchain/gcc/gcc_startup_nrf51.S"
                 )
         if(SOFTDEVICE MATCHES "s130")
-            add_definitions(-DS130)
+            add_definitions(-DS130 -DSOFTDEVICE_PRESENT)
             set(SOFTDEVICE_PATH "${NRF5_SDK_PATH}/components/softdevice/s130/hex/s130_nrf51_1.0.0_softdevice.hex")
         elseif(SOFTDEVICE MATCHES "s110")
-            add_definitions(-DS110)
+            add_definitions(-DS110 -DSOFTDEVICE_PRESENT)
             set(SOFTDEVICE_PATH "${NRF5_SDK_PATH}/components/softdevice/s110/hex/s110_nrf51_8.0.0_softdevice.hex")
         endif()
         set(SOFTDEVICE_POSTFIX "${SOFTDEVICE}")
@@ -113,7 +112,7 @@ macro(nRF5x_setup)
     if (DEBUG_ENABLE)
         set(OPTIMITHATION_FLAGS "-Wall -Werror -O0 -g3")
     else()
-        set(OPTIMITHATION_FLAGS "-Wall -Werror -O3 -g3")
+        set(OPTIMITHATION_FLAGS "-Wall -Werror -O3")
     endif()
     set(COMMON_FLAGS "-MP -MD -mthumb -mabi=aapcs ${OPTIMITHATION_FLAGS} -ffunction-sections -fdata-sections -fno-strict-aliasing -fno-builtin --short-enums ${CPU_FLAGS}")
 
@@ -121,7 +120,7 @@ macro(nRF5x_setup)
     # compiler/assambler/linker flags
     set(CMAKE_C_FLAGS "${COMMON_FLAGS}")
     set(CMAKE_CXX_FLAGS "${COMMON_FLAGS}")
-    set(CMAKE_ASM_FLAGS "-MP -MD -std=c99 -x assembler-with-cpp")
+    set(CMAKE_ASM_FLAGS "-MP -MD -std=c99 -x assembler-with-cpp ${OPTIMITHATION_FLAGS}")
     set(CMAKE_EXE_LINKER_FLAGS "-mthumb -mabi=aapcs -std=gnu++98 -std=c99 -L ${NRF5_SDK_PATH}/components/toolchain/gcc ${CPU_FLAGS} -Wl,--gc-sections --specs=nano.specs -lc -lnosys")
     # note: we must override the default cmake linker flags so that CMAKE_C_FLAGS are not added implicitly
     set(CMAKE_C_LINK_EXECUTABLE "${CMAKE_C_COMPILER} <LINK_FLAGS> <OBJECTS> -o <TARGET>")
@@ -201,15 +200,26 @@ macro(nRF5x_setup)
         )
 
         # adds target for erasing and flashing the board with a softdevice
-        add_custom_target(FLASH_SOFTDEVICE ALL
-                COMMAND ${OPENOCD_PATH} -f interface/stlink.cfg -f target/nrf51.cfg -c init -c \"reset halt\" -c \"nrf51 mass_erase 0\" -c \"flash write_image ${SOFTDEVICE_PATH}\" -c reset -c exit
+        add_custom_target(FLASH_${SOFTDEVICE_POSTFIX} ALL
+                COMMAND ${OPENOCD_PATH} -f interface/stlink.cfg -f target/nrf51.cfg -c init -c \"reset halt\" -c \"flash write_image ${SOFTDEVICE_PATH}\" -c reset -c exit
                 )
     endif()
+
+    add_custom_target(ERASE ALL
+        COMMAND ${OPENOCD_PATH} -f interface/stlink.cfg -f target/nrf51.cfg -c init -c \"reset halt\" -c "nrf51 mass_erase 0" -c reset -c exit
+        COMMENT "erasing"
+    )
 
 endmacro(nRF5x_setup)
 
 # adds a target for comiling and flashing an executable
 macro(nRF5x_addExecutable EXECUTABLE_NAME SOURCE_FILES)
+    # Check conflicts
+    get_directory_property(_DEFS COMPILE_DEFINITIONS)
+    if(NOT _DEFS MATCHES "BSP_DEFINES_ONLY" AND _DEFS MATCHES "FREERTOS")
+        message(FATAL_ERROR "FreeRTOS works only with BSP_DEFINES_ONLY definition (see nRF5x_addBSP)")
+    endif()
+
     # executable
     add_executable(${EXECUTABLE_NAME} ${SDK_SOURCE_FILES} ${SOURCE_FILES})
     set_target_properties(${EXECUTABLE_NAME} PROPERTIES SUFFIX ".out")
@@ -223,7 +233,7 @@ macro(nRF5x_addExecutable EXECUTABLE_NAME SOURCE_FILES)
 
     # custom target for flashing the board
     add_custom_target(FLASH_${EXECUTABLE_NAME} ALL
-            COMMAND ${OPENOCD_PATH} -f interface/stlink.cfg -f target/nrf51.cfg -c init -c \"reset halt\" -c \"flash write_image erase ${EXECUTABLE_NAME}.hex ${WRITE_IMAGE_OFFSET}\" -c reset -c exit
+            COMMAND ${OPENOCD_PATH} -f interface/stlink.cfg -f target/nrf51.cfg -c init -c \"reset halt\" -c \"flash write_image ${EXECUTABLE_NAME}.hex ${WRITE_IMAGE_OFFSET}\" -c reset -c exit
             DEPENDS ${EXECUTABLE_NAME}
             COMMENT "flashing ${EXECUTABLE_NAME}.hex"
             )
@@ -300,32 +310,26 @@ macro(nRF5x_addAppButton)
 endmacro(nRF5x_addAppButton)
 
 # adds BSP (board support package) library
-macro(nRF5x_addBSP WITH_BLE_BTN WITH_ANT_BTN WITH_NFC)
-    include_directories(
-            "${NRF5_SDK_PATH}/examples/bsp"
-    )
+macro(nRF5x_addBSP WITH_BLE_BTN WITH_ANT_BTN WITH_NFC BSP_DEFINES_ONLY)
+    include_directories("${NRF5_SDK_PATH}/examples/bsp")
 
-    list(APPEND SDK_SOURCE_FILES
-            "${NRF5_SDK_PATH}/examples/bsp/bsp.c"
-            )
+    if(NOT ${BSP_DEFINES_ONLY})
+        list(APPEND SDK_SOURCE_FILES "${NRF5_SDK_PATH}/examples/bsp/bsp.c")
 
-    if (${WITH_BLE_BTN})
-        list(APPEND SDK_SOURCE_FILES
-                "${NRF5_SDK_PATH}/components/libraries/bsp/bsp_btn_ble.c"
-                )
-    endif ()
+        if(${WITH_BLE_BTN})
+            list(APPEND SDK_SOURCE_FILES "${NRF5_SDK_PATH}/components/libraries/bsp/bsp_btn_ble.c")
+        endif ()
 
-    if (${WITH_ANT_BTN})
-        list(APPEND SDK_SOURCE_FILES
-                "${NRF5_SDK_PATH}/components/libraries/bsp/bsp_btn_ant.c"
-                )
-    endif ()
+        if(${WITH_ANT_BTN})
+            list(APPEND SDK_SOURCE_FILES "${NRF5_SDK_PATH}/components/libraries/bsp/bsp_btn_ant.c")
+        endif ()
 
-    if (${WITH_NFC})
-        list(APPEND SDK_SOURCE_FILES
-                "${NRF5_SDK_PATH}/components/libraries/bsp/bsp_nfc.c"
-                )
-    endif ()
+        if(${WITH_NFC})
+            list(APPEND SDK_SOURCE_FILES "${NRF5_SDK_PATH}/components/libraries/bsp/bsp_nfc.c")
+        endif()
+    else()
+        add_definitions(-DBSP_DEFINES_ONLY)
+    endif()
 
 endmacro(nRF5x_addBSP)
 

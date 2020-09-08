@@ -37,7 +37,7 @@ static void vLed0Function (void *pvParameter)
 	UNUSED_PARAMETER(pvParameter);
 	for( ;; )
 	{
-		nrf_gpio_pin_toggle(LED_1);
+		nrf_gpio_pin_toggle(BSP_LED_0);
 		vTaskDelay(TASK_DELAY); // Delay a task for a given number of ticks
 
 		// Tasks must be implemented to never return...
@@ -48,16 +48,16 @@ static void vLed0Function (void *pvParameter)
  *
  * @param[in] pvParameter   Pointer that will be used as the parameter for the timer.
  */
-static void vLed1Callback (void *pvParameter)
-{
-	UNUSED_PARAMETER(pvParameter);
-	nrf_gpio_pin_toggle(BSP_LED_1);
-}
+//static void vLed1Callback (void *pvParameter)
+//{
+//	UNUSED_PARAMETER(pvParameter);
+//	nrf_gpio_pin_toggle(BSP_LED_1);
+//}
 
 int main(void)
 {
-	TaskHandle_t  xLed0Handle;       /**< Reference to LED0 toggling FreeRTOS task. */
-	TimerHandle_t xLed1Handle;       /**< Reference to LED1 toggling FreeRTOS timer. */
+	TaskHandle_t  xLed0Handle = NULL;       /**< Reference to LED0 toggling FreeRTOS task. */
+//	TimerHandle_t xLed1Handle;       /**< Reference to LED1 toggling FreeRTOS timer. */
 	ret_code_t err_code;
 
 	err_code = nrf_drv_clock_init(NULL);
@@ -73,9 +73,9 @@ int main(void)
 	nrf_gpio_pin_set(BSP_LED_2);
 	nrf_gpio_pin_set(BSP_LED_3);
 
-	UNUSED_VARIABLE(xTaskCreate( vLed0Function, "L0", configMINIMAL_STACK_SIZE, NULL, 2, &xLed0Handle ));    // LED0 task creation
-	xLed1Handle = xTimerCreate( "L1", TIMER_PERIOD, pdTRUE, NULL, vLed1Callback );                                 // LED1 timer creation
-	UNUSED_VARIABLE(xTimerStart( xLed1Handle, 0 ));                                                                // LED1 timer start
+	UNUSED_VARIABLE(xTaskCreate( vLed0Function, "L0", configMINIMAL_STACK_SIZE + 100, NULL, 2, &xLed0Handle )); // LED0 task creation
+//	xLed1Handle = xTimerCreate( "L1", TIMER_PERIOD, pdTRUE, NULL, vLed1Callback );                            // LED1 timer creation
+//	UNUSED_VARIABLE(xTimerStart( xLed1Handle, 0 ));                                                                // LED1 timer start
 
 	/* Activate deep sleep mode */
 	SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
@@ -100,8 +100,15 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t *file_name)
 
 #else // FREERTOS
 
+#include <boards.h>
+#include <nrf_delay.h>
+
 int main() {
-	while (1) {}
+	nrf_gpio_cfg_output(BSP_LED_0);
+	while (1) {
+		nrf_gpio_pin_toggle(BSP_LED_0);
+		nrf_delay_ms(200);
+	}
 }
 
 #endif // FREERTOS
