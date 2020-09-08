@@ -73,7 +73,7 @@ macro(nRF5x_setup)
 
         set(NRF5_LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/${LINKER_SCRIPT}")
         set(CPU_FLAGS "-mcpu=cortex-m0 -mfloat-abi=soft")
-        add_definitions(-DBOARD_PCA10028 -DNRF51 -DNRF51422 -DSWI_DISABLE0 -DNRF_SD_BLE_API_VERSION=2 -DBLE_STACK_SUPPORT_REQD -D__HEAP_SIZE=1024)
+        add_definitions(-DBOARD_PCA10028 -DNRF51 -DNRF51422 -DBLE_STACK_SUPPORT_REQD -D__HEAP_SIZE=1024 -D__STACK_SIZE=2048)
         include_directories(
                 "${NRF5_SDK_PATH}/components/softdevice/s130/headers"
         )
@@ -149,13 +149,6 @@ macro(nRF5x_setup)
             "${NRF5_SDK_PATH}/components/toolchain/cmsis/include"
     )
 
-    # log
-    include_directories(
-            "${NRF5_SDK_PATH}/components/libraries/log"
-            "${NRF5_SDK_PATH}/components/libraries/log/src"
-            "${NRF5_SDK_PATH}/components/libraries/timer"
-    )
-
     # Segger RTT
     include_directories(
             "${NRF5_SDK_PATH}/external/segger_rtt/"
@@ -216,7 +209,7 @@ endmacro(nRF5x_setup)
 macro(nRF5x_addExecutable EXECUTABLE_NAME SOURCE_FILES)
     # Check conflicts
     get_directory_property(_DEFS COMPILE_DEFINITIONS)
-    if(NOT _DEFS MATCHES "BSP_DEFINES_ONLY" AND _DEFS MATCHES "FREERTOS")
+    if(DEFINED BSP AND NOT _DEFS MATCHES "BSP_DEFINES_ONLY" AND _DEFS MATCHES "FREERTOS")
         message(FATAL_ERROR "FreeRTOS works only with BSP_DEFINES_ONLY definition (see nRF5x_addBSP)")
     endif()
 
@@ -279,10 +272,14 @@ macro(nRF5x_addAppFIFO)
 endmacro(nRF5x_addAppFIFO)
 
 # adds app-level Timer libraries
-macro(nRF5x_addAppTimer)
-    list(APPEND SDK_SOURCE_FILES
-            "${NRF5_SDK_PATH}/components/libraries/timer/app_timer.c"
-            )
+macro(nRF5x_addAppTimer TIMER_TYPE)
+    include_directories(${NRF5_SDK_PATH}/components/libraries/timer)
+
+    if (${TIMER_TYPE} STREQUAL FREERTOS)
+        list(APPEND SDK_SOURCE_FILES "${NRF5_SDK_PATH}/components/libraries/timer/app_timer_freertos.c")
+    elseif(${TIMER_TYPE} STREQUAL APP)
+        list(APPEND SDK_SOURCE_FILES "${NRF5_SDK_PATH}/components/libraries/timer/app_timer.c")
+    endif()
 endmacro(nRF5x_addAppTimer)
 
 # adds app-level UART libraries
@@ -297,18 +294,6 @@ macro(nRF5x_addAppUART)
 
 endmacro(nRF5x_addAppUART)
 
-# adds app-level Button library
-macro(nRF5x_addAppButton)
-    include_directories(
-            "${NRF5_SDK_PATH}/components/libraries/button"
-    )
-
-    list(APPEND SDK_SOURCE_FILES
-            "${NRF5_SDK_PATH}/components/libraries/button/app_button.c"
-            )
-
-endmacro(nRF5x_addAppButton)
-
 # adds BSP (board support package) library
 macro(nRF5x_addBSP WITH_BLE_BTN WITH_ANT_BTN WITH_NFC BSP_DEFINES_ONLY)
     include_directories("${NRF5_SDK_PATH}/examples/bsp")
@@ -317,20 +302,21 @@ macro(nRF5x_addBSP WITH_BLE_BTN WITH_ANT_BTN WITH_NFC BSP_DEFINES_ONLY)
         list(APPEND SDK_SOURCE_FILES "${NRF5_SDK_PATH}/examples/bsp/bsp.c")
 
         if(${WITH_BLE_BTN})
-            list(APPEND SDK_SOURCE_FILES "${NRF5_SDK_PATH}/components/libraries/bsp/bsp_btn_ble.c")
+            list(APPEND SDK_SOURCE_FILES ${NRF5_SDK_PATH}/examples/bsp/bsp_btn_ble.c)
         endif ()
 
         if(${WITH_ANT_BTN})
-            list(APPEND SDK_SOURCE_FILES "${NRF5_SDK_PATH}/components/libraries/bsp/bsp_btn_ant.c")
+            list(APPEND SDK_SOURCE_FILES "${NRF5_SDK_PATH}/examples/bsp/bsp_btn_ant.c")
         endif ()
 
         if(${WITH_NFC})
-            list(APPEND SDK_SOURCE_FILES "${NRF5_SDK_PATH}/components/libraries/bsp/bsp_nfc.c")
+            list(APPEND SDK_SOURCE_FILES "${NRF5_SDK_PATH}/examples/bsp/bsp_nfc.c")
         endif()
     else()
         add_definitions(-DBSP_DEFINES_ONLY)
     endif()
 
+    set(BSP)
 endmacro(nRF5x_addBSP)
 
 # adds Bluetooth Low Energy GATT support library
@@ -418,3 +404,52 @@ macro(nRF5x_addAppFreeRTOS)
             )
 
 endmacro(nRF5x_addAppFreeRTOS)
+
+
+macro(nRF5x_addAppBLE)
+    foreach(submodule ${ARGN})
+        include_directories(${NRF5_SDK_PATH}/components/ble/${submodule})
+        file(GLOB _sources ${NRF5_SDK_PATH}/components/ble/${submodule}/*.c)
+        list(APPEND SDK_SOURCE_FILES ${_sources})
+    endforeach()
+endmacro(nRF5x_addAppBLE)
+
+macro(nRF5x_addAppBLESources)
+    set(options "")
+    set(oneValueArgs LIBRARY)
+    set(multiValueArgs SOURCES)
+    cmake_parse_arguments(addAppBLESources "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+    include_directories(${NRF5_SDK_PATH}/components/ble/${addAppBLESources_LIBRARY})
+    foreach(_source ${addAppBLESources_SOURCES})
+        list(APPEND SDK_SOURCE_FILES ${NRF5_SDK_PATH}/components/ble/${addAppBLESources_LIBRARY}/${_source})
+    endforeach()
+endmacro(nRF5x_addAppBLESources)
+
+macro(nRF5x_addAppLibraries)
+    foreach(library_name ${ARGN})
+        include_directories(${NRF5_SDK_PATH}/components/libraries/${library_name})
+        file(GLOB _sources ${NRF5_SDK_PATH}/components/libraries/${library_name}/*.c)
+        list(APPEND SDK_SOURCE_FILES ${_sources})
+    endforeach()
+endmacro(nRF5x_addAppLibraries)
+
+macro(nRF5x_addAppLibrarySources)
+    set(options "")
+    set(oneValueArgs LIBRARY)
+    set(multiValueArgs SOURCES)
+    cmake_parse_arguments(addAppLibrarySources "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+    include_directories(${NRF5_SDK_PATH}/components/libraries/${addAppLibrarySources_LIBRARY})
+    foreach(_source ${nRF5x_addAppLibrarySources_SOURCES})
+        list(APPEND SDK_SOURCE_FILES ${NRF5_SDK_PATH}/components/libraries/${addAppLibrarySources_LIBRARY}/${_source})
+    endforeach()
+endmacro(nRF5x_addAppLibrarySources)
+
+macro(nRF5x_addAppDriverNRF)
+    foreach(driver_name ${ARGN})
+        include_directories(${NRF5_SDK_PATH}/components/drivers_nrf/${driver_name})
+        file(GLOB _sources ${NRF5_SDK_PATH}/components/drivers_nrf/${driver_name}/*${driver_name}.c)
+        list(APPEND SDK_SOURCE_FILES ${_sources})
+    endforeach()
+endmacro(nRF5x_addAppDriverNRF)
